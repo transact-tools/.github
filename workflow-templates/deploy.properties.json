@@ -1,0 +1,7 @@
+{
+  "name": "AWS CDK Deployment Workflow",
+  "description": "Deploys a service to the AWS infrastructure. The default branch will be deployed to production and \\`deploy/\\` branches will be pushed to development.",
+  "iconName": "deploy",
+  "categories": ["JavaScript"],
+  "filePatterns": ["package.json$", "cdk.json$"]
+}

@@ -1,0 +1,68 @@
+name: "Deploy Service"
+
+on:
+  push:
+    branches:
+      - deploy/*
+      - $default-branch
+
+env:
+  AWS_DEFAULT_REGION: eu-west-1
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_EXTERNAL_ID: ${{ secrets.AWS_EXTERNAL_ID }}
+  JSON_AWS_ACCOUNT_IDS: ${{ secrets.JSON_AWS_ACCOUNT_IDS }}
+  AWS_ROLE_SESSION_NAME: tools.transact.service
+
+jobs:
+  determine-deployment-account:
+    name: Determine Deployment Account
+    runs-on: ubuntu-latest
+    outputs:
+      account_id: ${{ steps.development.outputs.account_id }}${{ steps.production.outputs.account_id }}
+    steps:
+      - name: Development Account ID
+        id: development
+        if: github.ref != 'refs/heads/$default-branch'
+        run: |
+          echo "::set-output name=account_id::`echo $JSON_AWS_ACCOUNT_IDS | jq -r ".development"`"
+      - name: Production Account ID
+        id: production
+        if: github.ref == 'refs/heads/$default-branch'
+        run: |
+          echo "::set-output name=account_id::`echo $JSON_AWS_ACCOUNT_IDS | jq -r ".production"`"
+
+  deploy-changes:
+    name: Deploy Changes
+    runs-on: ubuntu-18.04
+    needs: determine-deployment-account
+
+    env:
+      AWS_ACCOUNT_ID: ${{ needs.determine-deployment-account.outputs.account_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Determine Credentials
+        run: |
+          aws sts assume-role --role-arn arn:aws:iam::$AWS_ACCOUNT_ID:role/CI --external-id $AWS_EXTERNAL_ID --role-session-name "$AWS_ROLE_SESSION_NAME" --output json --query 'Credentials' > credentials.json
+          echo "AWS_ACCESS_KEY_ID=`cat credentials.json | jq -r '.AccessKeyId'`" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=`cat credentials.json | jq -r '.SecretAccessKey'`" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=`cat credentials.json | jq -r '.SessionToken'`" >> $GITHUB_ENV
+
+      - name: Install NodeJS
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+
+      - name: Install Dependencies
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=$NODE_AUTH_TOKEN" >> ~/.npmrc
+          npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.ORGANISATION_TOKEN }}
+
+      - name: "Deploy"
+        timeout-minutes: 30
+        run: npx cdk deploy --all
