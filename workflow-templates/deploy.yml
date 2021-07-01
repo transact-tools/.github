@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - deploy/*
-      - $default-branch
+      - master
 
 env:
   AWS_DEFAULT_REGION: eu-west-1
@@ -23,12 +23,12 @@ jobs:
     steps:
       - name: Development Account ID
         id: development
-        if: github.ref != 'refs/heads/$default-branch'
+        if: github.ref != 'refs/heads/master'
         run: |
           echo "::set-output name=account_id::`echo $JSON_AWS_ACCOUNT_IDS | jq -r ".development"`"
       - name: Production Account ID
         id: production
-        if: github.ref == 'refs/heads/$default-branch'
+        if: github.ref == 'refs/heads/master'
         run: |
           echo "::set-output name=account_id::`echo $JSON_AWS_ACCOUNT_IDS | jq -r ".production"`"
 
